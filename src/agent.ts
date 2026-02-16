@@ -70,7 +70,13 @@ export class AlexAgent {
       const nlu = classifyIntent(utterance);
       Object.assign(entities, nlu.entities);
 
-      if (nlu.confidence < 0.55) {
+      const extractedUsefulEntity = Object.keys(nlu.entities).length > 0;
+      const shouldRunAsrRecovery =
+        nlu.confidence < 0.55 &&
+        !extractedUsefulEntity &&
+        (state === "S1" || state === "SERR" || utterance.trim().length < 2);
+
+      if (shouldRunAsrRecovery) {
         recoveryCount += 1;
         state = "SERR";
         if (recoveryCount === 1) {
@@ -193,8 +199,8 @@ export class AlexAgent {
         } else {
           const fullName = `${entities.firstName} ${entities.lastName}`;
           const secondary = entities.dob ?? entities.phone!;
-          patientId = await this.scheduler.lookup_patient(fullName, secondary);
-          if (!patientId) {
+          const lookedUpPatientId = await this.scheduler.lookup_patient(fullName, secondary);
+          if (!lookedUpPatientId) {
             say("I could not verify your record. I can connect you to the front desk.");
             say(transferPrefacePrompt());
             const summary: StructuredSummary = {
@@ -209,6 +215,7 @@ export class AlexAgent {
             state = "S8";
             break;
           }
+          patientId = lookedUpPatientId;
         }
 
         say(`Thanks. I have ${entities.firstName} ${entities.lastName}.`);
