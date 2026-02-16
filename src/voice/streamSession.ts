@@ -30,6 +30,8 @@ export class StreamSession {
   private router = new AudioRouter();
   private callbacks: SessionCallbacks;
   private silenceTimer?: NodeJS.Timeout;
+  private partialTimer?: NodeJS.Timeout;
+  private pendingPartial?: { text: string; confidence: number };
 
   constructor(options: SessionOptions) {
     this.ctx = this.policy.createContext(options.sessionId);
@@ -67,7 +69,18 @@ export class StreamSession {
     const emitted = hinted.length ? hinted : [{ type: final ? "final" : "partial", text, confidence }];
     for (const result of emitted) {
       if (result.type === "final") {
+        this.clearPartialTimer();
         await this.handleTranscript(result.text, result.confidence);
+      } else {
+        // Debounce partials into a natural turn-taking finalization window.
+        this.pendingPartial = { text: result.text, confidence: result.confidence };
+        this.clearPartialTimer();
+        this.partialTimer = setTimeout(() => {
+          const current = this.pendingPartial;
+          this.pendingPartial = undefined;
+          if (!current || !current.text.trim()) return;
+          void this.handleTranscript(current.text, Math.max(0.72, current.confidence));
+        }, 420);
       }
     }
     this.resetSilenceTimer();
@@ -87,6 +100,7 @@ export class StreamSession {
 
   async close(): Promise<void> {
     if (this.silenceTimer) clearTimeout(this.silenceTimer);
+    this.clearPartialTimer();
     await this.stt.close();
   }
 
@@ -106,9 +120,11 @@ export class StreamSession {
   }
 
   private async speak(text: string): Promise<void> {
-    const chunks = await this.tts.synthesize(text);
+    await this.waitNaturalTurnLatency();
+    const conversationalText = this.humanizePrompt(text);
+    const chunks = await this.tts.synthesize(conversationalText);
     this.router.flush();
-    this.router.holdSpeaking(Math.min(3000, Math.max(900, text.length * 35)));
+    this.router.holdSpeaking(Math.min(3800, Math.max(1200, conversationalText.length * 42)));
     for (const chunk of chunks) {
       this.router.enqueue({ kind: chunk.kind, payload: chunk.payload as Buffer | string });
     }
@@ -123,7 +139,7 @@ export class StreamSession {
       }
     }
 
-    this.callbacks.onLog({ type: "assistant_prompt", text: redactSensitive(text) });
+    this.callbacks.onLog({ type: "assistant_prompt", text: redactSensitive(conversationalText) });
   }
 
   private handleBargeIn(): void {
@@ -137,6 +153,30 @@ export class StreamSession {
     this.silenceTimer = setTimeout(() => {
       void this.onSilenceTimeout();
     }, 6000);
+  }
+
+  private clearPartialTimer(): void {
+    if (this.partialTimer) clearTimeout(this.partialTimer);
+    this.partialTimer = undefined;
+  }
+
+  private async waitNaturalTurnLatency(): Promise<void> {
+    // Human-like turn-taking delay target: 300-500ms.
+    const rawMin = Number(process.env.TURN_LATENCY_MIN_MS ?? 300);
+    const rawMax = Number(process.env.TURN_LATENCY_MAX_MS ?? 500);
+    const min = Math.min(rawMin, rawMax);
+    const max = Math.max(rawMin, rawMax);
+    const delayMs = Math.floor(Math.random() * (max - min + 1) + min);
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  private humanizePrompt(text: string): string {
+    // Keep responses concise but less robotic for speech.
+    return text
+      .replace(/\.\s+/g, ". ")
+      .replace(/\bI will\b/g, "I'll")
+      .replace(/\bdo not\b/g, "don't")
+      .replace(/\bcan not\b/g, "can't");
   }
 
   private buildSummary(disposition: SessionSummary["disposition"]): string {

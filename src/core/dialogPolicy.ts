@@ -89,7 +89,7 @@ export class DialogPolicy {
     if (ctx.state === "GREET") {
       ctx.state = nextState(ctx, { emergency: false, wantsHuman: false });
       return {
-        prompt: `Thanks for calling ${this.clinic.name}. This is Alex, the automated assistant. How can I help today: schedule, reschedule, cancel, office info, or connect to front desk?`,
+        prompt: `Thanks for calling ${this.clinic.name}. This is Alex, the automated assistant. How can I help today? You can say schedule, reschedule, cancel, office info, or front desk.`,
         state: ctx.state,
         actions: [],
         endCall: false
@@ -102,7 +102,7 @@ export class DialogPolicy {
 
       if (ctx.fields.intent === "office_info") {
         return {
-          prompt: `Our address is ${this.clinic.address}. Parking: ${this.clinic.parking}. Fax: ${this.clinic.fax}.`,
+          prompt: `Sure. Our address is ${this.clinic.address}. Parking is ${this.clinic.parking}. Our fax number is ${this.clinic.fax}.`,
           state: ctx.state,
           actions: [{ type: "end" }],
           endCall: true
@@ -119,7 +119,7 @@ export class DialogPolicy {
       }
 
       return {
-        prompt: "Before we continue, are you calling about urgent symptoms today?",
+        prompt: "Thanks. Before we continue, are you calling about urgent symptoms right now?",
         state: ctx.state,
         actions: [],
         endCall: false
@@ -129,7 +129,7 @@ export class DialogPolicy {
     if (ctx.state === "TRIAGE") {
       ctx.state = nextState(ctx, { emergency: false, wantsHuman: false });
       return {
-        prompt: "Are you a new patient or existing patient?",
+        prompt: "Are you a new patient or an existing patient?",
         state: ctx.state,
         actions: [],
         endCall: false
@@ -170,7 +170,7 @@ export class DialogPolicy {
         ctx.fields.firstName = name.firstName;
         ctx.fields.lastName = name.lastName;
         return {
-          prompt: "For verification, please provide date of birth in YYYY-MM-DD or phone number on file.",
+          prompt: "For verification, please share your date of birth in YYYY-MM-DD, or the phone number on file.",
           state: ctx.state,
           actions: [],
           endCall: false
@@ -235,7 +235,7 @@ export class DialogPolicy {
       }
 
       return {
-        prompt: "What type of appointment do you need: annual checkup, follow-up, new issue, forms, or vaccination?",
+        prompt: "What type of appointment do you need? For example, annual checkup, follow-up, new issue, forms, or vaccination.",
         state: ctx.state,
         actions: [],
         endCall: false
@@ -255,7 +255,7 @@ export class DialogPolicy {
       }
       ctx.state = nextState(ctx, { emergency: false, wantsHuman: false });
       return {
-        prompt: "Do you want earliest available, or a preferred date in YYYY-MM-DD?",
+        prompt: "Would you like the earliest available time, or do you have a preferred date in YYYY-MM-DD?",
         state: ctx.state,
         actions: [],
         endCall: false
@@ -276,7 +276,7 @@ export class DialogPolicy {
         const cancellationId = await this.scheduler.cancel(apptId);
         ctx.state = "CONFIRM";
         return {
-          prompt: `Done. Your appointment is cancelled. Confirmation ${cancellationId}.`,
+          prompt: `You're all set. Your appointment is cancelled. Your confirmation number is ${cancellationId}.`,
           state: ctx.state,
           actions: [{ type: "cancel", payload: { confirmationId: cancellationId } }],
           endCall: false
@@ -319,7 +319,7 @@ export class DialogPolicy {
         const confirmationId = await this.scheduler.reschedule(ctx.fields.appointmentId, top[0].id);
         ctx.state = "CONFIRM";
         return {
-          prompt: `Rescheduled to ${this.formatSlot(top[0].startIso)} with ${top[0].providerName}. Confirmation ${confirmationId}.`,
+          prompt: `Great, I moved that to ${this.formatSlot(top[0].startIso)} with ${top[0].providerName}. Your confirmation number is ${confirmationId}.`,
           state: ctx.state,
           actions: [{ type: "reschedule", payload: { confirmationId } }],
           endCall: false
@@ -364,7 +364,7 @@ export class DialogPolicy {
       const confirmationId = await this.scheduler.book(top[0].id, ctx.fields.patientId ?? "unknown", ctx.fields.reasonCategory ?? "follow-up");
       ctx.state = "CONFIRM";
       return {
-        prompt: `Booked for ${this.formatSlot(top[0].startIso)} with ${top[0].providerName}. Confirmation ${confirmationId}.`,
+        prompt: `Perfect. I booked ${this.formatSlot(top[0].startIso)} with ${top[0].providerName}. Your confirmation number is ${confirmationId}.`,
         state: ctx.state,
         actions: [{ type: "book", payload: { confirmationId } }],
         endCall: false
@@ -375,7 +375,7 @@ export class DialogPolicy {
       ctx.state = "DONE";
       ctx.endCall = true;
       return {
-        prompt: "Thanks. Your request is complete. Is there anything else today? Goodbye.",
+        prompt: "You're all set. Is there anything else I can help with today? Thank you for calling. Goodbye.",
         state: ctx.state,
         actions: [{ type: "end" }],
         endCall: true

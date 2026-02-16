@@ -72,6 +72,8 @@
       let recognizer;
       let speaking = false;
       let started = false;
+      let canCaptureRecognition = true;
+      let selectedVoice = null;
 
       const log = (line) => {
         logEl.textContent += `${line}\n`;
@@ -100,6 +102,7 @@
         recognizer.interimResults = true;
 
         recognizer.onresult = (event) => {
+          if (!canCaptureRecognition) return;
           for (let i = event.resultIndex; i < event.results.length; i++) {
             const result = event.results[i];
             const transcript = result[0].transcript.trim();
@@ -126,20 +129,48 @@
       }
 
       function speak(text) {
+        if (!text) return;
         const utter = new SpeechSynthesisUtterance(text);
-        utter.rate = 0.98;
-        utter.pitch = 1.0;
+        utter.rate = 0.94;
+        utter.pitch = 1.02;
+        utter.volume = 1.0;
+        if (selectedVoice) utter.voice = selectedVoice;
         utter.onstart = () => {
           speaking = true;
+          canCaptureRecognition = false;
         };
         utter.onend = () => {
           speaking = false;
+          canCaptureRecognition = true;
         };
         speechSynthesis.speak(utter);
       }
 
+      function chooseNaturalVoice() {
+        const voices = speechSynthesis.getVoices() || [];
+        if (!voices.length) return;
+        const preferredNames = [
+          "Samantha",
+          "Google US English",
+          "Google UK English Female",
+          "Ava",
+          "Karen",
+          "Moira"
+        ];
+        selectedVoice =
+          voices.find((v) => preferredNames.some((name) => v.name.includes(name))) ||
+          voices.find((v) => v.lang && v.lang.toLowerCase().startsWith("en")) ||
+          voices[0];
+      }
+
       function setupMic() {
-        return navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+        return navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        }).then((stream) => {
           mediaStream = stream;
           audioContext = new AudioContext({ sampleRate: 16000 });
           const src = audioContext.createMediaStreamSource(stream);
@@ -157,6 +188,8 @@
             const rms = Math.sqrt(energy / input.length);
             if (rms > 0.04 && speaking) {
               speechSynthesis.cancel();
+              speaking = false;
+              canCaptureRecognition = true;
               ws.send(JSON.stringify({ type: "barge_in" }));
               log("[barge-in] You interrupted Alex.");
             }
@@ -169,6 +202,8 @@
         ws = new WebSocket(`${location.origin.replace("http", "ws")}/ws/local`);
         ws.onopen = async () => {
           started = true;
+          chooseNaturalVoice();
+          speechSynthesis.onvoiceschanged = chooseNaturalVoice;
           await setupMic();
           setupRecognizer();
           log("Connected. Speak now.");
