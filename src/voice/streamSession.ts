@@ -104,6 +104,10 @@ export class StreamSession {
     await this.stt.close();
   }
 
+  interruptForBargeIn(): void {
+    this.handleBargeIn();
+  }
+
   private async handleTranscript(text: string, confidence: number): Promise<void> {
     this.callbacks.onLog({ type: "caller_transcript", text: redactSensitive(text), confidence });
     const res = await this.policy.handleUtterance(this.ctx, text, confidence);

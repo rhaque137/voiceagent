@@ -82,8 +82,7 @@ server.on("upgrade", (req, socket, head) => {
       }
 
       if (msg.type === "barge_in") {
-        // Barge-in can also be triggered by explicit client event.
-        await session.ingestTranscriptHint("", false, 1);
+        session.interruptForBargeIn();
       }
     });
 

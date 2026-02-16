@@ -74,6 +74,7 @@
       let started = false;
       let canCaptureRecognition = true;
       let selectedVoice = null;
+      let pendingBargeIn = false;
 
       const log = (line) => {
         logEl.textContent += `${line}\n`;
@@ -102,11 +103,22 @@
         recognizer.interimResults = true;
 
         recognizer.onresult = (event) => {
-          if (!canCaptureRecognition) return;
           for (let i = event.resultIndex; i < event.results.length; i++) {
             const result = event.results[i];
             const transcript = result[0].transcript.trim();
             if (!transcript) continue;
+
+            // If user starts talking while Alex is speaking, interrupt immediately.
+            if (speaking && !pendingBargeIn) {
+              pendingBargeIn = true;
+              speechSynthesis.cancel();
+              speaking = false;
+              canCaptureRecognition = true;
+              ws.send(JSON.stringify({ type: "barge_in" }));
+              log("[barge-in] You interrupted Alex.");
+            }
+
+            if (!canCaptureRecognition) continue;
 
             ws.send(JSON.stringify({
               type: "transcript",
@@ -116,6 +128,7 @@
             }));
 
             if (result.isFinal) {
+              pendingBargeIn = false;
               log(`YOU: ${transcript}`);
             }
           }
@@ -138,10 +151,12 @@
         utter.onstart = () => {
           speaking = true;
           canCaptureRecognition = false;
+          pendingBargeIn = false;
         };
         utter.onend = () => {
           speaking = false;
           canCaptureRecognition = true;
+          pendingBargeIn = false;
         };
         speechSynthesis.speak(utter);
       }
@@ -182,17 +197,6 @@
             const input = event.inputBuffer.getChannelData(0);
             const payload = float32ToInt16Base64(input);
             ws.send(JSON.stringify({ type: "audio", pcm16: payload, sampleRate: 16000 }));
-
-            let energy = 0;
-            for (let i = 0; i < input.length; i++) energy += input[i] * input[i];
-            const rms = Math.sqrt(energy / input.length);
-            if (rms > 0.04 && speaking) {
-              speechSynthesis.cancel();
-              speaking = false;
-              canCaptureRecognition = true;
-              ws.send(JSON.stringify({ type: "barge_in" }));
-              log("[barge-in] You interrupted Alex.");
-            }
           };
         });
       }
