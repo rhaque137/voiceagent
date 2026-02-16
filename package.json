@@ -1,18 +1,25 @@
 {
-  "name": "agent-alex",
-  "version": "1.0.0",
+  "name": "agent-alex-voice",
+  "version": "2.0.0",
   "private": true,
-  "description": "Production-ready voice agent scaffold for doctor office scheduling and transfer",
+  "description": "Real-time speaking voice agent for clinic scheduling and front desk transfer",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/src/agent.js",
-    "dev": "tsx src/agent.ts",
+    "dev:local": "npm run build && APP_MODE=local node dist/src/server.js",
+    "dev:twilio": "npm run build && APP_MODE=twilio node dist/src/server.js",
+    "start": "node dist/src/server.js",
     "test": "vitest run"
   },
-  "dependencies": {},
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  },
   "devDependencies": {
+    "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",
+    "@types/ws": "^8.5.14",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

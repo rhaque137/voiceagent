@@ -1,42 +1,88 @@
-# Alex Voice Agent (Doctor's Office)
+# Alex Real-Time Voice Agent (Voice In / Voice Out)
 
-Production-ready TypeScript scaffold for a phone-optimized voice agent named **Alex** that handles:
-- appointment book/reschedule/cancel
-- warm transfer to front desk
-- emergency triage redirection
-- safe call summaries with redaction
+This project implements a **speaking** clinic voice assistant named **Alex**.
+It is not a chat-only UI.
 
-## Architecture Summary
+## What It Supports
 
-- `src/agent.ts`: orchestrator with call state machine (`S0`-`S9`, `SERR`), loop limits, safety-first routing
-- `src/nlu.ts`: rule-based intent + entity extraction with low-confidence detection fallback
-- `src/scheduler.ts`: required backend function interfaces + mock adapter implementation
-- `src/safety.ts`: emergency/urgent triage rule engine
-- `src/transfer.ts`: minimal-PHI handoff summary generator
-- `src/prompts.ts`: system + reusable voice prompts
-- `src/utils.ts`: validation, formatting, redaction, slot ranking
-- `config/clinic.json`: clinic configuration (hours/providers/modalities/front desk number)
-- `tests/conversation.test.ts`: 8 required scripted transcript scenarios
+- Streaming voice session orchestration
+- STT adapter interface (`src/voice/sttProvider.ts`) with working local transcript-hint mode + mock
+- TTS adapter interface (`src/voice/ttsProvider.ts`) with working browser speech mode + mock audio mode
+- Barge-in interruption while Alex is speaking
+- Silence detection (6s reprompt, second silence transfer offer, third silence end)
+- Appointment booking/reschedule/cancel with in-memory scheduler mock
+- Twilio voice webhook + Twilio Media Streams WS architecture
+- Warm transfer summary generation with redacted logging
+
+## Project Structure
+
+- `src/server.ts`
+- `src/core/stateMachine.ts`
+- `src/core/dialogPolicy.ts`
+- `src/core/safety.ts`
+- `src/core/validators.ts`
+- `src/core/redaction.ts`
+- `src/core/summary.ts`
+- `src/voice/audioRouter.ts`
+- `src/voice/vad.ts`
+- `src/voice/sttProvider.ts`
+- `src/voice/ttsProvider.ts`
+- `src/voice/streamSession.ts`
+- `src/telephony/twilioWebhook.ts`
+- `src/telephony/twilioMediaWs.ts`
+- `src/telephony/transfer.ts`
+- `src/scheduler/schedulerApi.ts`
+- `src/config/clinic.json`
+- `public/index.html`
+- `tests/voiceFlows.test.ts`
 
 ## Setup
 
-1. Install dependencies:
-
 ```bash
 npm install
-```
-
-2. Create runtime env file:
-
-```bash
 cp .env.example .env
 ```
 
-3. Run demo conversation:
+## Local Voice Mode (Mic + Speaker)
 
 ```bash
-npm run dev -- --demo
+npm run dev:local
 ```
+
+Then open [http://localhost:8787](http://localhost:8787), click **Start Voice Session**, and speak.
+
+Notes:
+- Browser mic audio streams to `/ws/local`
+- Browser SpeechRecognition provides incremental/final transcript hints for STT path
+- Alex replies as spoken audio through browser `speechSynthesis`
+- Barge-in is enabled: speaking while Alex talks interrupts playback
+
+## Twilio Phone Mode
+
+```bash
+npm run dev:twilio
+```
+
+Expose localhost with ngrok:
+
+```bash
+ngrok http 8787
+```
+
+Set env:
+- `TWILIO_STREAM_WSS_URL=wss://<your-ngrok-domain>`
+
+Configure Twilio number webhook:
+- Voice webhook URL: `https://<your-ngrok-domain>/twilio/voice`
+- Method: `POST`
+
+The webhook returns TwiML with `<Connect><Stream>` to `/twilio/media`.
+
+### Twilio Codec Notes
+
+- Incoming media is expected as 8kHz mu-law
+- `src/telephony/twilioMediaWs.ts` decodes mu-law to PCM16 for VAD/STT
+- Outgoing PCM16 chunks are encoded back to mu-law for stream responses
 
 ## Tests
 
@@ -44,27 +90,34 @@ npm run dev -- --demo
 npm test
 ```
 
-## Swap Mock Scheduler For Real EMR
+Includes required flow simulations:
+- book earliest
+- reschedule
+- cancel
+- office hours
+- refill -> transfer
+- emergency protocol
+- barge-in event behavior
 
-1. Implement a real adapter class in `src/scheduler.ts` that satisfies `SchedulerAdapter`.
-2. Wire API auth/base URL from `.env` (`EMR_BASE_URL`, `EMR_API_KEY`).
-3. Replace `createSchedulerAdapter()` to instantiate the real adapter when `SCHEDULER_MODE=real`.
-4. Keep function signatures stable:
-   - `get_clinic_info`
-   - `lookup_patient`
-   - `get_available_slots`
-   - `book_appointment`
-   - `reschedule_appointment`
-   - `cancel_appointment`
-   - `create_new_patient`
-   - `log_call_summary`
-   - `warm_transfer`
-5. Preserve privacy and logging redaction before writing call metadata.
+## Swapping STT/TTS Providers
 
-## Compliance/Safety Notes
+### STT
 
-- Alex always identifies as automated when asked.
-- Medical reason is captured only as high-level category.
-- No diagnosis/treatment advice is provided.
-- Emergency symptom triggers immediate emergency instruction and exits scheduling flow.
-- If uncertain or repeated failures occur, Alex defaults to transfer.
+Update `createSttProvider()` in `src/voice/sttProvider.ts`:
+- add a real streaming provider (Deepgram, Google, Azure, OpenAI Realtime, etc.)
+- map partial/final transcripts to `SttResult`
+
+### TTS
+
+Update `createTtsProvider()` in `src/voice/ttsProvider.ts`:
+- add low-latency streaming TTS provider
+- emit PCM16 or mu-law `TtsChunk`s for Twilio transport
+
+Keep adapter interfaces stable so `StreamSession` remains unchanged.
+
+## Compliance / Safety
+
+- Alex discloses automation in greeting
+- No diagnosis or treatment advice
+- Emergency keywords trigger immediate emergency guidance and stop scheduling
+- Logging is redacted (`DOB` / phone masking) before writing logs

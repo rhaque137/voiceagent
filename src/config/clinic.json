@@ -1,0 +1,24 @@
+{
+  "name": "Riverside Family Clinic",
+  "timezone": "America/Toronto",
+  "hours": {
+    "monday": "8:30 AM - 5:00 PM",
+    "tuesday": "8:30 AM - 5:00 PM",
+    "wednesday": "8:30 AM - 5:00 PM",
+    "thursday": "8:30 AM - 7:00 PM",
+    "friday": "8:30 AM - 4:00 PM",
+    "saturday": "9:00 AM - 12:00 PM",
+    "sunday": "Closed"
+  },
+  "address": "123 Health Ave, Toronto, ON",
+  "parking": "Underground parking on P1, first 20 minutes free",
+  "fax": "+1-416-555-0199",
+  "frontDeskNumber": "+15551230000",
+  "providers": [
+    { "id": "p1", "name": "Dr. Patel" },
+    { "id": "p2", "name": "Dr. Nguyen" },
+    { "id": "p3", "name": "Dr. Sharma" }
+  ],
+  "modalities": ["in-person", "phone", "video"],
+  "acceptingNewPatients": true
+}
