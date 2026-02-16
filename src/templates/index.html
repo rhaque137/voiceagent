@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alex - Patient Coordinator</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+        .chat-container { border: 1px solid #ccc; padding: 20px; height: 400px; overflow-y: scroll; margin-bottom: 20px; border-radius: 5px; background-color: #f9f9f9; }
+        .message { margin-bottom: 10px; padding: 10px; border-radius: 5px; max-width: 80%; }
+        .user-message { background-color: #e3f2fd; margin-left: auto; text-align: right; }
+        .agent-message { background-color: #e8f5e9; margin-right: auto; }
+        .input-area { display: flex; gap: 10px; }
+        input[type="text"] { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        button { padding: 10px 20px; background-color: #2196F3; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background-color: #0b7dda; }
+    </style>
+</head>
+<body>
+    <h1>Alex - Patient Coordinator</h1>
+    <div class="chat-container" id="chat-container"></div>
+    <div class="input-area">
+        <input type="text" id="user-input" placeholder="Type your message..." autocomplete="off">
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <script>
+        const sessionId = Math.random().toString(36).substring(7);
+        const chatContainer = document.getElementById('chat-container');
+        const userInput = document.getElementById('user-input');
+
+        // Initial Greeting
+        addMessage("Hello, this is Alex, your Patient Coordinator. Could you please state your name and date of birth for verification?", 'agent');
+
+        userInput.addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                sendMessage();
+            }
+        });
+
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            addMessage(message, 'user');
+            userInput.value = '';
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: sessionId, message: message })
+                });
+
+                const data = await response.json();
+                addMessage(data.response, 'agent');
+
+                if (data.response === "TRANSFER_INITIATED") {
+                    addMessage("[System: Call transferred to emergency line]", 'agent');
+                    document.getElementById('user-input').disabled = true;
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage("Sorry, there was an error communicating with the server.", 'agent');
+            }
+        }
+
+        function addMessage(text, sender) {
+            const div = document.createElement('div');
+            div.className = `message ${sender}-message`;
+            div.textContent = text;
+            chatContainer.appendChild(div);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+    </script>
+</body>
+</html>
