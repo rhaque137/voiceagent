@@ -83,10 +83,6 @@ app.post("/api/resemble/synthesize", async (req, res) => {
   const voiceUuid = process.env.RESEMBLE_VOICE_UUID;
   const text = String(req.body?.text ?? "").trim();
 
-  if (!voiceUuid) {
-    res.status(400).json({ error: "Missing RESEMBLE_VOICE_UUID in environment." });
-    return;
-  }
   if (!text) {
     res.status(400).json({ error: "Missing text for synthesis." });
     return;
@@ -100,7 +96,7 @@ app.post("/api/resemble/synthesize", async (req, res) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        voice_uuid: voiceUuid,
+        ...(voiceUuid ? { voice_uuid: voiceUuid } : {}),
         data: text,
         model: process.env.RESEMBLE_MODEL ?? "chatterbox-turbo",
         output_format: "wav",
