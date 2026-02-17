@@ -18,60 +18,6 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, mode: process.env.APP_MODE ?? "local" });
 });
 
-app.post("/api/openai/realtime/session", async (_req, res) => {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    res.status(500).json({ error: "Missing OPENAI_API_KEY in environment." });
-    return;
-  }
-
-  try {
-    const model = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime";
-    const voice = process.env.OPENAI_REALTIME_VOICE ?? "alloy";
-    const instructions =
-      process.env.OPENAI_REALTIME_INSTRUCTIONS ??
-      [
-        "You are Alex, a calm and warm automated assistant for a doctor's office.",
-        "Keep responses concise and natural for phone audio.",
-        "Ask one question at a time.",
-        "Do not provide diagnosis or treatment advice.",
-        "If emergency symptoms are mentioned, instruct caller to seek emergency services now."
-      ].join(" ");
-
-    const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model,
-        voice,
-        instructions,
-        input_audio_transcription: {
-          model: process.env.OPENAI_TRANSCRIPTION_MODEL ?? "gpt-4o-mini-transcribe"
-        },
-        turn_detection: {
-          type: "server_vad",
-          threshold: 0.5,
-          prefix_padding_ms: 250,
-          silence_duration_ms: 450
-        }
-      })
-    });
-
-    const payload = (await response.json()) as Record<string, unknown>;
-    if (!response.ok) {
-      res.status(response.status).json({ error: payload });
-      return;
-    }
-
-    res.json(payload);
-  } catch (error) {
-    res.status(500).json({ error: String(error) });
-  }
-});
-
 app.post("/api/resemble/synthesize", async (req, res) => {
   const apiKey = process.env.RESEMBLE_API_KEY;
   if (!apiKey) {

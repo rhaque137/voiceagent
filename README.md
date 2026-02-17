@@ -6,7 +6,7 @@ It is not a chat-only UI.
 ## What It Supports
 
 - Streaming voice session orchestration
-- OpenAI Realtime voice-to-voice mode (WebRTC) for natural conversational audio
+- Resemble voice output in local legacy mode (`/stream` with `/synthesize` fallback)
 - STT adapter interface (`src/voice/sttProvider.ts`) with working local transcript-hint mode + mock
 - TTS adapter interface (`src/voice/ttsProvider.ts`) with working browser speech mode + mock audio mode
 - Barge-in interruption while Alex is speaking
@@ -44,8 +44,7 @@ npm install
 cp .env.example .env
 ```
 
-Set `OPENAI_API_KEY` in `.env` for realistic voice-to-voice mode.
-Set `RESEMBLE_API_KEY` and `RESEMBLE_VOICE_UUID` in `.env` if you want Resemble voice in legacy local mode.
+Set `RESEMBLE_API_KEY` in `.env`.
 
 ## Local Voice Mode (Mic + Speaker)
 
@@ -54,13 +53,13 @@ npm run dev:local
 ```
 
 Then open [http://localhost:8787](http://localhost:8787), click **Start Voice Session**, and speak.
-In the UI choose `OpenAI Realtime Voice (Recommended)` for natural voice conversation.
-If you choose `Legacy Local Pipeline`, set `Legacy Voice` to `Resemble TTS` for higher-quality voice than browser TTS.
+Set `Legacy Voice` to `Resemble TTS`.
 
 Notes:
-- OpenAI Realtime mode: browser uses WebRTC to OpenAI Realtime API with server-minted ephemeral session key (`POST /api/openai/realtime/session`)
-- Legacy mode: browser mic streams to `/ws/local` and uses local STT/TTS simulation
-- Barge-in is enabled in both modes
+- Browser mic streams to `/ws/local`
+- Resemble streaming endpoint is used first: `POST /api/resemble/stream`
+- If stream fails, synth fallback is used: `POST /api/resemble/synthesize`
+- Barge-in is enabled
 
 ## Twilio Phone Mode
 
@@ -106,38 +105,26 @@ Includes required flow simulations:
 
 ## Swapping STT/TTS Providers
 
-### STT
+### STT/TTS
 
-Update `createSttProvider()` in `src/voice/sttProvider.ts`:
-- add a real streaming provider (Deepgram, Google, Azure, OpenAI Realtime, etc.)
-- map partial/final transcripts to `SttResult`
-
-### TTS
-
+Update `createSttProvider()` in `src/voice/sttProvider.ts` for alternate STT backends.
 Update `createTtsProvider()` in `src/voice/ttsProvider.ts`:
 - add low-latency streaming TTS provider
 - emit PCM16 or mu-law `TtsChunk`s for Twilio transport
 
 Keep adapter interfaces stable so `StreamSession` remains unchanged.
 
-## OpenAI Realtime Notes
-
-- Server endpoint: `POST /api/openai/realtime/session`
-- It creates ephemeral Realtime sessions using your `OPENAI_API_KEY`.
-- Browser then negotiates SDP directly with OpenAI Realtime and receives native voice output.
-- Tune naturalness via `.env`:
-  - `OPENAI_REALTIME_VOICE`
-  - `OPENAI_REALTIME_INSTRUCTIONS`
-  - `TURN_LATENCY_MIN_MS` / `TURN_LATENCY_MAX_MS` (legacy local mode)
-
 ## Resemble Voice Notes
 
-- Server endpoint: `POST /api/resemble/synthesize`
+- Server endpoints:
+  - `POST /api/resemble/stream`
+  - `POST /api/resemble/synthesize`
 - Requires:
   - `RESEMBLE_API_KEY`
   - `RESEMBLE_VOICE_UUID`
 - Configurable endpoint:
-  - `RESEMBLE_SYNTH_ENDPOINT` (default `https://f.cluster.resemble.ai/synthesize`)
+  - `RESEMBLE_SYNTH_ENDPOINT` (default `https://p.cluster.resemble.ai/synthesize`)
+  - `RESEMBLE_STREAM_ENDPOINT` (default `https://p.cluster.resemble.ai/stream`)
 
 ## Compliance / Safety
 

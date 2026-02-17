@@ -53,12 +53,7 @@
     <div class="wrap">
       <div class="panel">
         <h2>Alex Voice Agent Local Demo</h2>
-        <p class="hint">Default mode uses OpenAI real-time voice-to-voice (WebRTC). Legacy mode is available for fallback testing.</p>
-        <label for="mode">Mode:</label>
-        <select id="mode">
-          <option value="openai-realtime" selected>OpenAI Realtime Voice (Recommended)</option>
-          <option value="legacy-local">Legacy Local Pipeline</option>
-        </select>
+        <p class="hint">Legacy pipeline with Resemble voice output. Speak naturally and Alex responds with your Resemble voice.</p>
         <label for="legacyVoice">Legacy Voice:</label>
         <select id="legacyVoice">
           <option value="resemble" selected>Resemble TTS</option>
@@ -76,7 +71,6 @@
       const statusEl = document.getElementById("status");
       const startBtn = document.getElementById("start");
       const stopBtn = document.getElementById("stop");
-      const modeSelect = document.getElementById("mode");
       const legacyVoiceSelect = document.getElementById("legacyVoice");
 
       let ws;
@@ -87,9 +81,6 @@
       let started = false;
       let pendingBargeIn = false;
 
-      let realtimePc;
-      let realtimeDc;
-      let realtimeAudioEl;
       let activeAudioSource;
       let activeAudioElement;
 
@@ -109,97 +100,6 @@
           int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
         }
         return btoa(String.fromCharCode(...new Uint8Array(int16.buffer)));
-      }
-
-      async function startOpenAiRealtime() {
-        setStatus("Creating OpenAI realtime session...");
-        log("SYSTEM: Starting OpenAI voice-to-voice session.");
-
-        const tokenResponse = await fetch("/api/openai/realtime/session", { method: "POST" });
-        const tokenData = await tokenResponse.json();
-        if (!tokenResponse.ok) {
-          throw new Error(`Session creation failed: ${JSON.stringify(tokenData)}`);
-        }
-
-        const ephemeralKey = tokenData?.client_secret?.value;
-        const model = tokenData?.model || "gpt-realtime";
-        if (!ephemeralKey) {
-          throw new Error("Realtime session missing client_secret.value");
-        }
-
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
-        });
-
-        realtimePc = new RTCPeerConnection();
-        realtimeAudioEl = document.createElement("audio");
-        realtimeAudioEl.autoplay = true;
-        realtimePc.ontrack = (event) => {
-          realtimeAudioEl.srcObject = event.streams[0];
-        };
-
-        for (const track of mediaStream.getTracks()) {
-          realtimePc.addTrack(track, mediaStream);
-        }
-
-        realtimeDc = realtimePc.createDataChannel("oai-events");
-        realtimeDc.onmessage = (event) => {
-          const msg = JSON.parse(event.data);
-          if (msg.type === "conversation.item.input_audio_transcription.completed") {
-            log(`YOU: ${msg.transcript}`);
-          }
-          if (msg.type === "response.audio_transcript.done") {
-            log(`ALEX: ${msg.transcript}`);
-          }
-          if (msg.type === "error") {
-            log(`SYSTEM ERROR: ${JSON.stringify(msg.error || msg)}`);
-          }
-        };
-
-        realtimeDc.onopen = () => {
-          setStatus("OpenAI realtime connected.");
-          realtimeDc.send(
-            JSON.stringify({
-              type: "session.update",
-              session: {
-                instructions:
-                  "You are Alex, a warm and natural phone assistant for a doctor's office. Keep responses short and conversational. Ask one question at a time. Never provide medical diagnosis or treatment advice.",
-                turn_detection: {
-                  type: "server_vad",
-                  threshold: 0.5,
-                  prefix_padding_ms: 250,
-                  silence_duration_ms: 450
-                }
-              }
-            })
-          );
-          log("SYSTEM: OpenAI realtime connected. Start talking.");
-        };
-
-        const offer = await realtimePc.createOffer();
-        await realtimePc.setLocalDescription(offer);
-
-        const baseUrl = "https://api.openai.com/v1/realtime";
-        const sdpResponse = await fetch(`${baseUrl}?model=${encodeURIComponent(model)}`, {
-          method: "POST",
-          body: offer.sdp,
-          headers: {
-            Authorization: `Bearer ${ephemeralKey}`,
-            "Content-Type": "application/sdp"
-          }
-        });
-
-        if (!sdpResponse.ok) {
-          const errText = await sdpResponse.text();
-          throw new Error(`Realtime SDP negotiation failed: ${errText}`);
-        }
-
-        const answerSdp = await sdpResponse.text();
-        await realtimePc.setRemoteDescription({ type: "answer", sdp: answerSdp });
       }
 
       function setupRecognizer() {
@@ -351,13 +251,8 @@
       startBtn.onclick = async () => {
         if (started) return;
         started = true;
-        const mode = modeSelect.value;
         try {
-          if (mode === "openai-realtime") {
-            await startOpenAiRealtime();
-          } else {
-            await startLegacyLocal();
-          }
+          await startLegacyLocal();
         } catch (error) {
           setStatus("Failed to start voice session.");
           log(`SYSTEM ERROR: ${String(error)}`);
@@ -396,14 +291,6 @@
         if (ws) ws.close();
         ws = undefined;
 
-        if (realtimeDc) realtimeDc.close();
-        realtimeDc = undefined;
-        if (realtimePc) realtimePc.close();
-        realtimePc = undefined;
-        if (realtimeAudioEl) {
-          realtimeAudioEl.srcObject = null;
-        }
-        realtimeAudioEl = undefined;
         pendingBargeIn = false;
         log("SYSTEM: Stopped.");
       };
