@@ -6,6 +6,7 @@ It is not a chat-only UI.
 ## What It Supports
 
 - Streaming voice session orchestration
+- OpenAI Realtime voice-to-voice mode (WebRTC) for natural conversational audio
 - STT adapter interface (`src/voice/sttProvider.ts`) with working local transcript-hint mode + mock
 - TTS adapter interface (`src/voice/ttsProvider.ts`) with working browser speech mode + mock audio mode
 - Barge-in interruption while Alex is speaking
@@ -43,6 +44,8 @@ npm install
 cp .env.example .env
 ```
 
+Set `OPENAI_API_KEY` in `.env` for realistic voice-to-voice mode.
+
 ## Local Voice Mode (Mic + Speaker)
 
 ```bash
@@ -50,12 +53,12 @@ npm run dev:local
 ```
 
 Then open [http://localhost:8787](http://localhost:8787), click **Start Voice Session**, and speak.
+In the UI choose `OpenAI Realtime Voice (Recommended)` for natural voice conversation.
 
 Notes:
-- Browser mic audio streams to `/ws/local`
-- Browser SpeechRecognition provides incremental/final transcript hints for STT path
-- Alex replies as spoken audio through browser `speechSynthesis`
-- Barge-in is enabled: speaking while Alex talks interrupts playback
+- OpenAI Realtime mode: browser uses WebRTC to OpenAI Realtime API with server-minted ephemeral session key (`POST /api/openai/realtime/session`)
+- Legacy mode: browser mic streams to `/ws/local` and uses local STT/TTS simulation
+- Barge-in is enabled in both modes
 
 ## Twilio Phone Mode
 
@@ -114,6 +117,16 @@ Update `createTtsProvider()` in `src/voice/ttsProvider.ts`:
 - emit PCM16 or mu-law `TtsChunk`s for Twilio transport
 
 Keep adapter interfaces stable so `StreamSession` remains unchanged.
+
+## OpenAI Realtime Notes
+
+- Server endpoint: `POST /api/openai/realtime/session`
+- It creates ephemeral Realtime sessions using your `OPENAI_API_KEY`.
+- Browser then negotiates SDP directly with OpenAI Realtime and receives native voice output.
+- Tune naturalness via `.env`:
+  - `OPENAI_REALTIME_VOICE`
+  - `OPENAI_REALTIME_INSTRUCTIONS`
+  - `TURN_LATENCY_MIN_MS` / `TURN_LATENCY_MAX_MS` (legacy local mode)
 
 ## Compliance / Safety
 
