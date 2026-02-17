@@ -72,6 +72,64 @@ app.post("/api/openai/realtime/session", async (_req, res) => {
   }
 });
 
+app.post("/api/resemble/synthesize", async (req, res) => {
+  const apiKey = process.env.RESEMBLE_API_KEY;
+  if (!apiKey) {
+    res.status(500).json({ error: "Missing RESEMBLE_API_KEY in environment." });
+    return;
+  }
+
+  const endpoint = process.env.RESEMBLE_SYNTH_ENDPOINT ?? "https://f.cluster.resemble.ai/synthesize";
+  const voiceUuid = process.env.RESEMBLE_VOICE_UUID;
+  const text = String(req.body?.text ?? "").trim();
+
+  if (!voiceUuid) {
+    res.status(400).json({ error: "Missing RESEMBLE_VOICE_UUID in environment." });
+    return;
+  }
+  if (!text) {
+    res.status(400).json({ error: "Missing text for synthesis." });
+    return;
+  }
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        voice_uuid: voiceUuid,
+        data: text,
+        model: process.env.RESEMBLE_MODEL ?? "chatterbox-turbo",
+        output_format: "wav",
+        sample_rate: Number(process.env.RESEMBLE_SAMPLE_RATE ?? 24000)
+      })
+    });
+
+    const payload = (await response.json()) as Record<string, unknown>;
+    if (!response.ok) {
+      res.status(response.status).json({ error: payload });
+      return;
+    }
+
+    const audioBase64 =
+      (payload.audio_content as string | undefined) ??
+      (payload.audio as string | undefined) ??
+      (payload.base64 as string | undefined);
+
+    if (!audioBase64) {
+      res.status(502).json({ error: "Resemble response missing audio payload.", raw: payload });
+      return;
+    }
+
+    res.json({ audioBase64, format: "wav" });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
 app.post("/twilio/voice", twilioVoiceWebhook);
 
 const server = createServer(app);

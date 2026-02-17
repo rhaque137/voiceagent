@@ -45,6 +45,7 @@ cp .env.example .env
 ```
 
 Set `OPENAI_API_KEY` in `.env` for realistic voice-to-voice mode.
+Set `RESEMBLE_API_KEY` and `RESEMBLE_VOICE_UUID` in `.env` if you want Resemble voice in legacy local mode.
 
 ## Local Voice Mode (Mic + Speaker)
 
@@ -54,6 +55,7 @@ npm run dev:local
 
 Then open [http://localhost:8787](http://localhost:8787), click **Start Voice Session**, and speak.
 In the UI choose `OpenAI Realtime Voice (Recommended)` for natural voice conversation.
+If you choose `Legacy Local Pipeline`, set `Legacy Voice` to `Resemble TTS` for higher-quality voice than browser TTS.
 
 Notes:
 - OpenAI Realtime mode: browser uses WebRTC to OpenAI Realtime API with server-minted ephemeral session key (`POST /api/openai/realtime/session`)
@@ -127,6 +129,15 @@ Keep adapter interfaces stable so `StreamSession` remains unchanged.
   - `OPENAI_REALTIME_VOICE`
   - `OPENAI_REALTIME_INSTRUCTIONS`
   - `TURN_LATENCY_MIN_MS` / `TURN_LATENCY_MAX_MS` (legacy local mode)
+
+## Resemble Voice Notes
+
+- Server endpoint: `POST /api/resemble/synthesize`
+- Requires:
+  - `RESEMBLE_API_KEY`
+  - `RESEMBLE_VOICE_UUID`
+- Configurable endpoint:
+  - `RESEMBLE_SYNTH_ENDPOINT` (default `https://f.cluster.resemble.ai/synthesize`)
 
 ## Compliance / Safety
 

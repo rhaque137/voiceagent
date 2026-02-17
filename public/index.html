@@ -59,6 +59,11 @@
           <option value="openai-realtime" selected>OpenAI Realtime Voice (Recommended)</option>
           <option value="legacy-local">Legacy Local Pipeline</option>
         </select>
+        <label for="legacyVoice">Legacy Voice:</label>
+        <select id="legacyVoice">
+          <option value="resemble" selected>Resemble TTS</option>
+          <option value="browser">Browser TTS</option>
+        </select>
         <button id="start">Start Voice Session</button>
         <button id="stop">Stop</button>
         <div id="status" class="hint"></div>
@@ -72,6 +77,7 @@
       const startBtn = document.getElementById("start");
       const stopBtn = document.getElementById("stop");
       const modeSelect = document.getElementById("mode");
+      const legacyVoiceSelect = document.getElementById("legacyVoice");
 
       let ws;
       let audioContext;
@@ -84,6 +90,7 @@
       let realtimePc;
       let realtimeDc;
       let realtimeAudioEl;
+      let activeAudioSource;
 
       const log = (line) => {
         logEl.textContent += `${line}\n`;
@@ -244,6 +251,34 @@
         speechSynthesis.speak(utter);
       }
 
+      async function speakWithResemble(text) {
+        const resp = await fetch("/api/resemble/synthesize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(`Resemble error: ${JSON.stringify(data)}`);
+
+        const bytes = Uint8Array.from(atob(data.audioBase64), (c) => c.charCodeAt(0));
+        if (!audioContext) {
+          audioContext = new AudioContext();
+        }
+
+        const decoded = await audioContext.decodeAudioData(bytes.buffer.slice(0));
+        if (activeAudioSource) {
+          try {
+            activeAudioSource.stop();
+          } catch (_) {}
+        }
+
+        const source = audioContext.createBufferSource();
+        source.buffer = decoded;
+        source.connect(audioContext.destination);
+        source.start();
+        activeAudioSource = source;
+      }
+
       async function setupLegacyMic() {
         mediaStream = await navigator.mediaDevices.getUserMedia({
           audio: {
@@ -278,7 +313,16 @@
           const msg = JSON.parse(event.data);
           if (msg.type === "assistant_text") {
             log(`ALEX: ${msg.text}`);
-            if (!msg.text.startsWith("[barge-in]")) speak(msg.text);
+            if (!msg.text.startsWith("[barge-in]")) {
+              if (legacyVoiceSelect.value === "resemble") {
+                speakWithResemble(msg.text).catch((error) => {
+                  log(`SYSTEM: Resemble fallback to browser voice due to error: ${String(error)}`);
+                  speak(msg.text);
+                });
+              } else {
+                speak(msg.text);
+              }
+            }
           }
           if (msg.type === "transfer") {
             log(`SYSTEM: Transfer summary sent. ${msg.summary}`);
@@ -314,6 +358,12 @@
         recognizer = undefined;
 
         speechSynthesis.cancel();
+        if (activeAudioSource) {
+          try {
+            activeAudioSource.stop();
+          } catch (_) {}
+        }
+        activeAudioSource = undefined;
 
         if (scriptNode) scriptNode.disconnect();
         if (audioContext) audioContext.close();
