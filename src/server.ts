@@ -79,8 +79,8 @@ app.post("/api/resemble/synthesize", async (req, res) => {
     return;
   }
 
-  const endpoint = process.env.RESEMBLE_SYNTH_ENDPOINT ?? "https://f.cluster.resemble.ai/synthesize";
-  const voiceUuid = process.env.RESEMBLE_VOICE_UUID;
+  const endpoint = process.env.RESEMBLE_SYNTH_ENDPOINT ?? "https://p.cluster.resemble.ai/synthesize";
+  const voiceUuid = process.env.RESEMBLE_VOICE_UUID ?? "fb2d2858";
   const text = String(req.body?.text ?? "").trim();
 
   if (!text) {
@@ -92,17 +92,31 @@ app.post("/api/resemble/synthesize", async (req, res) => {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
+        // Support both common auth header styles used by voice providers.
         Authorization: `Bearer ${apiKey}`,
+        "x-api-key": apiKey,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        ...(voiceUuid ? { voice_uuid: voiceUuid } : {}),
+        voice_uuid: voiceUuid,
         data: text,
         model: process.env.RESEMBLE_MODEL ?? "chatterbox-turbo",
         output_format: "wav",
         sample_rate: Number(process.env.RESEMBLE_SAMPLE_RATE ?? 24000)
       })
     });
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("audio/")) {
+      const arr = await response.arrayBuffer();
+      const audioBase64 = Buffer.from(arr).toString("base64");
+      if (!response.ok) {
+        res.status(response.status).json({ error: "Resemble returned non-OK audio response." });
+        return;
+      }
+      res.json({ audioBase64, format: contentType.split(";")[0] });
+      return;
+    }
 
     const payload = (await response.json()) as Record<string, unknown>;
     if (!response.ok) {
@@ -121,6 +135,69 @@ app.post("/api/resemble/synthesize", async (req, res) => {
     }
 
     res.json({ audioBase64, format: "wav" });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.post("/api/resemble/stream", async (req, res) => {
+  const apiKey = process.env.RESEMBLE_API_KEY;
+  if (!apiKey) {
+    res.status(500).json({ error: "Missing RESEMBLE_API_KEY in environment." });
+    return;
+  }
+
+  const endpoint = process.env.RESEMBLE_STREAM_ENDPOINT ?? "https://p.cluster.resemble.ai/stream";
+  const voiceUuid = process.env.RESEMBLE_VOICE_UUID ?? "fb2d2858";
+  const text = String(req.body?.text ?? "").trim();
+  if (!text) {
+    res.status(400).json({ error: "Missing text for stream synthesis." });
+    return;
+  }
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "x-api-key": apiKey,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        voice_uuid: voiceUuid,
+        data: text,
+        model: process.env.RESEMBLE_MODEL ?? "chatterbox-turbo",
+        output_format: "wav",
+        sample_rate: Number(process.env.RESEMBLE_SAMPLE_RATE ?? 24000)
+      })
+    });
+
+    if (!response.ok || !response.body) {
+      const maybeJson = await response.text();
+      res.status(response.status || 502).json({ error: maybeJson || "Resemble stream request failed." });
+      return;
+    }
+
+    const contentType = response.headers.get("content-type") ?? "audio/wav";
+    res.status(200);
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "no-store");
+
+    response.body.pipeTo(
+      new WritableStream({
+        write(chunk) {
+          res.write(Buffer.from(chunk));
+        },
+        close() {
+          res.end();
+        },
+        abort(err) {
+          res.destroy(err as Error);
+        }
+      })
+    ).catch((err) => {
+      res.destroy(err as Error);
+    });
   } catch (error) {
     res.status(500).json({ error: String(error) });
   }

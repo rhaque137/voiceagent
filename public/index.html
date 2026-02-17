@@ -91,6 +91,7 @@
       let realtimeDc;
       let realtimeAudioEl;
       let activeAudioSource;
+      let activeAudioElement;
 
       const log = (line) => {
         logEl.textContent += `${line}\n`;
@@ -252,26 +253,40 @@
       }
 
       async function speakWithResemble(text) {
-        const resp = await fetch("/api/resemble/synthesize", {
+        const streamResp = await fetch("/api/resemble/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text })
         });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(`Resemble error: ${JSON.stringify(data)}`);
+        const streamType = streamResp.headers.get("content-type") || "";
+        if (streamResp.ok && streamType.includes("audio/")) {
+          const audioBlob = await streamResp.blob();
+          const url = URL.createObjectURL(audioBlob);
+          if (activeAudioElement) {
+            activeAudioElement.pause();
+            activeAudioElement.src = "";
+          }
+          const audio = new Audio(url);
+          activeAudioElement = audio;
+          audio.onended = () => URL.revokeObjectURL(url);
+          await audio.play();
+          return;
+        }
+
+        const fallbackResp = await fetch("/api/resemble/synthesize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        });
+        const data = await fallbackResp.json();
+        if (!fallbackResp.ok) throw new Error(`Resemble error: ${JSON.stringify(data)}`);
 
         const bytes = Uint8Array.from(atob(data.audioBase64), (c) => c.charCodeAt(0));
-        if (!audioContext) {
-          audioContext = new AudioContext();
-        }
-
+        if (!audioContext) audioContext = new AudioContext();
         const decoded = await audioContext.decodeAudioData(bytes.buffer.slice(0));
         if (activeAudioSource) {
-          try {
-            activeAudioSource.stop();
-          } catch (_) {}
+          try { activeAudioSource.stop(); } catch (_) {}
         }
-
         const source = audioContext.createBufferSource();
         source.buffer = decoded;
         source.connect(audioContext.destination);
@@ -364,6 +379,11 @@
           } catch (_) {}
         }
         activeAudioSource = undefined;
+        if (activeAudioElement) {
+          activeAudioElement.pause();
+          activeAudioElement.src = "";
+        }
+        activeAudioElement = undefined;
 
         if (scriptNode) scriptNode.disconnect();
         if (audioContext) audioContext.close();
